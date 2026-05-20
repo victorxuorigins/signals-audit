@@ -85,6 +85,9 @@ h1 { font-size: 22px; color: #7c6af7; letter-spacing: 3px; text-transform: upper
 
 <div class="log-wrap" id="log"></div>
 
+<div style="margin-bottom:12px;">
+  <button class="btn hidden" id="saveReportBtn" onclick="saveReport()" style="background:#1e1e35;color:#7c6af7;border:1px solid #7c6af7;">&#8595; Save Full Report</button>
+</div>
 <div id="results" class="hidden">
   <div class="score-hero">
     <div class="score-number" id="heroScore">--</div>
@@ -114,6 +117,18 @@ h1 { font-size: 22px; color: #7c6af7; letter-spacing: 3px; text-transform: upper
   <div class="card">
     <h2>Top 3 Priorities</h2>
     <div class="priorities" id="prioritiesList"></div>
+  </div>
+
+  <div class="card">
+    <h2>One-Click Structural Fixes</h2>
+    <p style="font-size:11px;color:#555;line-height:1.8;margin-bottom:16px;">These are the fixes your tool can generate instantly. Substantiation and Alignment require deeper work (flagged separately).</p>
+    <button class="btn" id="generateFixesBtn" onclick="generateFixes()" style="margin-right:12px;">&#9881; Generate Structural Fixes</button>
+    <span style="font-size:10px;color:#333;">Generates: BLUF rewrite, Key Facts box, FAQ block with JSON-LD, H2 suggestions</span>
+    <div id="fixesOutput" class="hidden" style="margin-top:20px;">
+      <div class="section-title">Generated Fixes — Copy & Paste Into Your CMS</div>
+      <div id="fixesContent" style="background:#050508;border:1px solid #1e1e35;border-radius:8px;padding:16px;font-size:11px;color:#888;line-height:1.8;white-space:pre-wrap;max-height:500px;overflow-y:auto;"></div>
+      <button onclick="copyFixes()" style="margin-top:12px;background:transparent;border:1px solid #7c6af7;color:#7c6af7;border-radius:4px;padding:6px 16px;font-family:monospace;font-size:11px;cursor:pointer;">Copy All Fixes</button>
+    </div>
   </div>
 
   <div class="card">
@@ -237,7 +252,7 @@ generation: is content quotable as standalone units?
 Respond ONLY with this exact JSON (no markdown, no fences):
 {"url":"string","overall_score":number,"alignment_score":number,"pipeline_diagnosis":{"primary_failure_stage":"retrieval|parsing|ranking|generation|none","retrieval":"pass|warn|fail","parsing":"pass|warn|fail","ranking":"pass|warn|fail","generation":"pass|warn|fail","diagnosis_summary":"one sentence under 120 chars"},"dimensions":{"S_structure":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"I_intent":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"G_grounding":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"N_newness":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"A_alignment":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"L_language":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"S2_substantiation":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"}},"top_3_priorities":["string","string","string"],"alignment_analysis":"2-3 sentences on buyer language match and gaps","citation_ready_sentences":["string","string"],"missing_citation_anchors":["string","string","string"]}
 
-Weights: A_alignment=35%, S2_substantiation=15%, G_grounding=13%, S_structure=12%, I_intent=10%, L_language=10%, N_newness=5%. Pass=7+, Warn=4-6, Fail=0-3.`;
+Weights: A_alignment=35%, S2_substantiation=15%, G_grounding=13%, S_structure=12%, I_intent=10%, L_language=10%, N_newness=5%. overall_score is 0-100. alignment_score is 0-10. Each dimension score is 0-10. Pass=7+, Warn=4-6, Fail=0-3.`;
 
 async function callClaude(ck, pageText, pageUrl, ragContext) {
   const msg = 'RESEARCH CONTEXT:\n' + ragContext + '\n\n---\n\nPAGE URL: ' + pageUrl + '\n\nPAGE CONTENT (' + pageText.length + ' chars):\n' + pageText + '\n\n---\n\nScore this page. Return ONLY the JSON object. Keep evidence and fix fields under 100 characters each. No markdown fences.';
@@ -290,6 +305,9 @@ async function callClaude(ck, pageText, pageUrl, ragContext) {
 
 function renderResults(audit) {
   document.getElementById('results').classList.remove('hidden');
+  // Normalize: if score is 0-10 scale, multiply to 0-100
+  if (audit.overall_score <= 10) audit.overall_score = Math.round(audit.overall_score * 10);
+  if (audit.alignment_score <= 10) {} // alignment stays 0-10
   const c = getColor(audit.overall_score);
   document.getElementById('heroScore').textContent = audit.overall_score;
   document.getElementById('heroScore').style.color = c;
@@ -364,6 +382,8 @@ function renderResults(audit) {
   (audit.missing_citation_anchors||[]).forEach(s => { const el=document.createElement('div'); el.className='missing-item'; el.textContent='+ '+s; cm.appendChild(el); });
 
   document.getElementById('results').scrollIntoView({behavior:'smooth'});
+  // Show save button
+  document.getElementById('saveReportBtn').classList.remove('hidden');
 }
 
 async function runAudit() {
@@ -403,6 +423,8 @@ async function runAudit() {
     log('Primary failure: ' + (audit.pipeline_diagnosis?.primary_failure_stage||'unknown').toUpperCase(),'ok');
 
     log('Step 4/4: Rendering...','info');
+    currentAuditData = audit;
+    currentPageText = pageText;
     renderResults(audit);
     log('=== Done ===','head');
   } catch(e) {
@@ -412,6 +434,105 @@ async function runAudit() {
     btn.disabled = false;
     btn.textContent = 'Run SIGNALS Audit';
   }
+}
+
+function saveReport() {
+  // Capture current audit data and render a standalone HTML report
+  const resultsEl = document.getElementById('results');
+  const url = document.getElementById('heroUrl').textContent;
+  const score = document.getElementById('heroScore').textContent;
+  const timestamp = new Date().toLocaleString();
+
+  const reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SIGNALS Report — ${url}</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #08080f; color: #e0e0e0; padding: 32px; }
+  h1 { color: #7c6af7; font-size: 20px; letter-spacing: 2px; margin-bottom: 4px; }
+  .meta { font-size: 11px; color: #444; margin-bottom: 32px; }
+  ${document.querySelector('style').textContent}
+</style>
+</head>
+<body>
+<h1>SIGNALS SCORE REPORT</h1>
+<div class="meta">Generated: ${timestamp} | URL: ${url} | Score: ${score}/100</div>
+${resultsEl.innerHTML}
+</body>
+</html>`;
+
+  const blob = new Blob([reportHtml], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'SIGNALS-Report-' + url.replace(/https?:\/\//, '').replace(/[\/\?#]/g, '-').slice(0,50) + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+let currentAuditData = null;
+let currentPageText = '';
+
+async function generateFixes() {
+  if (!currentAuditData) { alert('Run an audit first.'); return; }
+  const ck = document.getElementById('claudeKey').value.trim();
+  const btn = document.getElementById('generateFixesBtn');
+  btn.disabled = true; btn.textContent = 'Generating...';
+
+  const fixPrompt = `You are an AEO content specialist. Based on this SIGNALS audit, generate the structural fixes that can be applied immediately.
+
+AUDIT RESULTS:
+- Overall Score: ${currentAuditData.overall_score}/100
+- Primary failure: ${currentAuditData.pipeline_diagnosis?.primary_failure_stage}
+- Structure score: ${currentAuditData.dimensions?.S_structure?.score}/10
+- Grounding score: ${currentAuditData.dimensions?.G_grounding?.score}/10
+- Language score: ${currentAuditData.dimensions?.L_language?.score}/10
+- Alignment analysis: ${currentAuditData.alignment_analysis}
+
+PAGE URL: ${currentAuditData.url}
+
+PAGE CONTENT SAMPLE:
+${currentPageText.slice(0, 3000)}
+
+Generate these 4 structural fixes. Use ===SECTION NAME=== as dividers:
+
+===BLUF OPENING (replace current intro)===
+Write a 80-120 word Bottom Line Up Front opening. Start with what the page is, who it's for, when to use it. Include 2 specific numbers or facts. Mirror buyer search language.
+
+===KEY FACTS BOX===
+Generate a markdown table: | Fact | Detail | Source |
+Include 4-5 specific, verifiable facts about this topic with sources and years.
+
+===FAQ SECTION (5 questions)===
+Write 5 FAQ questions phrased exactly as buyers would type them into an AI. Each answer 50-70 words, self-contained. Format: Q: ... A: ...
+
+===JSON-LD SCHEMA===
+Write the complete FAQPage JSON-LD script tag using the 5 questions above.
+
+===H2 SUGGESTIONS===
+List 6 H2 headings that cover adjacent buyer intents. Each should be a question a buyer would ask.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ck, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3000, messages: [{ role: 'user', content: fixPrompt }] })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message);
+    const fixes = data.content[0].text;
+    document.getElementById('fixesContent').textContent = fixes;
+    document.getElementById('fixesOutput').classList.remove('hidden');
+  } catch(e) {
+    alert('Error generating fixes: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '&#9881; Generate Structural Fixes';
+  }
+}
+
+function copyFixes() {
+  const text = document.getElementById('fixesContent').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('Fixes copied to clipboard!'));
 }
 </script>
 </body>
