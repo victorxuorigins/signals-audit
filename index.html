@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SIGNALS Score — AI Citation Audit</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Courier New', monospace; background: #08080f; color: #e0e0e0; min-height: 100vh; padding: 32px; }
+h1 { font-size: 22px; color: #7c6af7; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 2px; }
+.tagline { font-size: 11px; color: #444; margin-bottom: 32px; letter-spacing: 1px; }
+.card { background: #0f0f1a; border: 1px solid #1e1e35; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+.card h2 { font-size: 11px; color: #7c6af7; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 11px; color: #555; margin-bottom: 4px; }
+.field input { width: 100%; background: #080810; border: 1px solid #1e1e35; border-radius: 4px; padding: 9px 12px; color: #e0e0e0; font-family: 'Courier New', monospace; font-size: 12px; outline: none; }
+.field input:focus { border-color: #7c6af7; }
+.btn { background: #7c6af7; color: #fff; border: none; border-radius: 6px; padding: 12px 28px; font-family: 'Courier New', monospace; font-size: 12px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
+.btn:hover { background: #6b59e6; }
+.btn:disabled { background: #2a2a3a; color: #555; cursor: not-allowed; }
+.score-hero { text-align: center; padding: 32px; background: #0a0a18; border: 1px solid #1e1e35; border-radius: 10px; margin-bottom: 20px; }
+.score-number { font-size: 80px; font-weight: bold; line-height: 1; margin-bottom: 8px; }
+.score-label { font-size: 13px; color: #666; letter-spacing: 2px; text-transform: uppercase; }
+.score-url { font-size: 11px; color: #444; margin-top: 8px; word-break: break-all; }
+.pipeline { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.pipeline-stage { flex: 1; min-width: 120px; background: #0f0f1a; border: 1px solid #1e1e35; border-radius: 8px; padding: 12px; text-align: center; }
+.pipeline-stage.pass { border-color: #22c55e; }
+.pipeline-stage.warn { border-color: #f59e0b; }
+.pipeline-stage.fail { border-color: #ef4444; }
+.pipeline-stage .stage-name { font-size: 10px; color: #666; letter-spacing: 1px; text-transform: uppercase; margin: 4px 0; }
+.pipeline-stage .stage-status { font-size: 11px; }
+.dimensions { display: grid; gap: 12px; }
+.dim { background: #0f0f1a; border: 1px solid #1e1e35; border-radius: 8px; padding: 16px; display: grid; grid-template-columns: 52px 1fr 56px; gap: 12px; align-items: start; }
+.dim-letter { width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; }
+.dim-name { font-size: 12px; color: #aaa; margin-bottom: 3px; }
+.dim-weight { font-size: 10px; color: #333; }
+.source-tag { display: inline-block; font-size: 9px; background: #1e1e35; color: #7c6af7; padding: 2px 6px; border-radius: 3px; margin: 4px 0 6px; }
+.dim-evidence { font-size: 11px; color: #555; line-height: 1.6; margin-bottom: 6px; }
+.dim-fix { font-size: 11px; color: #7c6af7; line-height: 1.6; background: #0a0a18; border-left: 2px solid #7c6af7; padding: 6px 10px; border-radius: 0 4px 4px 0; }
+.score-bar-bg { background: #1e1e35; border-radius: 2px; height: 4px; margin-top: 8px; }
+.score-bar-fill { height: 4px; border-radius: 2px; }
+.dim-score-num { font-size: 24px; font-weight: bold; text-align: right; }
+.dim-verdict { display: inline-block; font-size: 9px; padding: 2px 6px; border-radius: 3px; letter-spacing: 1px; float: right; margin-top: 2px; }
+.verdict-Pass { background: #052e16; color: #22c55e; }
+.verdict-Warn { background: #451a03; color: #f59e0b; }
+.verdict-Fail { background: #450a0a; color: #ef4444; }
+.priorities { display: grid; gap: 8px; }
+.priority-item { background: #0f0f1a; border: 1px solid #1e1e35; border-left: 3px solid #7c6af7; border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 12px; line-height: 1.6; color: #ccc; }
+.priority-num { color: #7c6af7; font-weight: bold; margin-right: 8px; }
+.alignment-box { background: #0a0a18; border: 1px solid #7c6af7; border-radius: 8px; padding: 16px; font-size: 12px; line-height: 1.8; color: #bbb; }
+.alignment-score-big { font-size: 48px; font-weight: bold; color: #7c6af7; display: inline-block; margin-right: 12px; line-height: 1; }
+.anchor-item { background: #0f0f1a; border: 1px solid #22c55e33; border-radius: 6px; padding: 10px 14px; font-size: 11px; color: #aaa; line-height: 1.6; margin-bottom: 6px; }
+.missing-item { background: #0f0f1a; border: 1px solid #ef444433; border-radius: 6px; padding: 10px 14px; font-size: 11px; color: #aaa; line-height: 1.6; margin-bottom: 6px; }
+.log-wrap { background: #050508; border: 1px solid #1e1e35; border-radius: 8px; padding: 14px; height: 160px; overflow-y: auto; margin-bottom: 20px; }
+.log-entry { font-size: 11px; line-height: 1.8; color: #444; }
+.log-entry.ok { color: #22c55e; }
+.log-entry.err { color: #ef4444; }
+.log-entry.info { color: #888; }
+.log-entry.head { color: #7c6af7; font-weight: bold; margin-top: 6px; }
+.hidden { display: none; }
+.section-title { font-size: 11px; color: #555; letter-spacing: 2px; text-transform: uppercase; margin: 16px 0 10px; padding-bottom: 8px; border-bottom: 1px solid #1e1e35; }
+</style>
+</head>
+<body>
+
+<h1>SIGNALS Score</h1>
+<p class="tagline">AI Citation Readiness Audit — Backed by 4 Research Papers, 2M+ Citations</p>
+
+<div class="card">
+  <h2>Credentials</h2>
+  <div class="field"><label>Claude API Key</label><input type="text" id="claudeKey" placeholder="sk-ant-..." /></div>
+  <div class="field"><label>Gemini API Key</label><input type="text" id="geminiKey" placeholder="AIza..." /></div>
+  <div class="field"><label>Supabase URL</label><input type="text" id="sbUrl" placeholder="https://uukypumkahsoirlzucpq.supabase.co" /></div>
+  <div class="field"><label>Supabase Anon Key</label><input type="text" id="sbKey" placeholder="eyJ..." /></div>
+</div>
+
+<div class="card">
+  <h2>Page to Audit</h2>
+  <div class="field"><label>URL — paste any page to audit</label><input type="text" id="pageUrl" placeholder="https://example.com/your-page" /></div>
+  <div class="field">
+    <label>OR paste page text directly (use this if URL fetch fails)</label>
+    <textarea id="pageTextManual" placeholder="Paste the full page text here as a fallback..." style="width:100%;background:#080810;border:1px solid #1e1e35;border-radius:4px;padding:9px 12px;color:#e0e0e0;font-family:'Courier New',monospace;font-size:11px;height:80px;resize:vertical;outline:none;"></textarea>
+  </div>
+  <button class="btn" id="auditBtn" onclick="runAudit()">&#9654; Run SIGNALS Audit</button>
+</div>
+
+<div class="log-wrap" id="log"></div>
+
+<div id="results" class="hidden">
+  <div class="score-hero">
+    <div class="score-number" id="heroScore">--</div>
+    <div class="score-label">SIGNALS Score / 100</div>
+    <div class="score-url" id="heroUrl"></div>
+  </div>
+
+  <div class="card">
+    <h2>AgentGEO Pipeline Diagnosis</h2>
+    <div class="pipeline" id="pipelineStages"></div>
+  </div>
+
+  <div class="card">
+    <h2>Alignment — Dominant Signal (35% of Score)</h2>
+    <div style="display:flex;align-items:center;margin-bottom:12px;">
+      <div class="alignment-score-big" id="alignScore">--</div>
+      <div style="font-size:11px;color:#555;line-height:1.8;">Per Discovered Labs 2026<br>beta=+0.37, the only page-level signal<br>surviving domain-level controls.</div>
+    </div>
+    <div class="alignment-box" id="alignAnalysis"></div>
+  </div>
+
+  <div class="card">
+    <h2>7 SIGNALS Dimensions</h2>
+    <div class="dimensions" id="dimensionsGrid"></div>
+  </div>
+
+  <div class="card">
+    <h2>Top 3 Priorities</h2>
+    <div class="priorities" id="prioritiesList"></div>
+  </div>
+
+  <div class="card">
+    <h2>Citation Anchors</h2>
+    <div class="section-title">Already citation-ready on this page</div>
+    <div id="citationReady"></div>
+    <div class="section-title">Missing — add these</div>
+    <div id="citationMissing"></div>
+  </div>
+</div>
+
+<script>
+const DIMENSION_META = {
+  S_structure: { letter:'S', name:'Structure', color:'#6366f1', weight:0.12, research:'ConvertMate: 68.7% of cited pages follow logical H1 to H2 to H3 hierarchy' },
+  I_intent: { letter:'I', name:'Intent Coverage', color:'#8b5cf6', weight:0.10, research:'Princeton GEO: query fan-out — one prompt becomes multiple sub-queries' },
+  G_grounding: { letter:'G', name:'Grounding', color:'#a855f7', weight:0.13, research:'Princeton GEO: statistics +41%, source citations +40%, expert quotes +28%' },
+  N_newness: { letter:'N', name:'Newness', color:'#7c6af7', weight:0.05, research:'Discovered Labs: page age beta=+0.05; engines prefer recently updated content' },
+  A_alignment: { letter:'A', name:'Alignment', color:'#7c3aed', weight:0.35, research:'Discovered Labs: beta=+0.37 (q~10^-73), only signal surviving domain controls' },
+  L_language: { letter:'L', name:'Language', color:'#9333ea', weight:0.10, research:'Princeton GEO: fluency optimization +15-30%; title-prompt similarity beta=+0.09' },
+  S2_substantiation: { letter:'S', name:'Substantiation', color:'#c026d3', weight:0.15, research:'ConvertMate: brands 6.5x more likely cited via third-party than own domains' }
+};
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const d = document.createElement('div');
+  d.className = 'log-entry ' + type;
+  d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+function getColor(score) {
+  if (score >= 70) return '#22c55e';
+  if (score >= 45) return '#f59e0b';
+  return '#ef4444';
+}
+
+async function fetchPageText(url) {
+  const proxies = [
+    'https://corsproxy.io/?' + encodeURIComponent(url),
+    'https://api.allorigins.win/get?url=' + encodeURIComponent(url),
+    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)
+  ];
+
+  let rawHtml = null;
+
+  for (let i = 0; i < proxies.length; i++) {
+    try {
+      log('  Trying proxy ' + (i+1) + '/3...', 'info');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(proxies[i], { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) { log('  Proxy ' + (i+1) + ' returned HTTP ' + res.status, 'info'); continue; }
+      if (proxies[i].includes('allorigins')) {
+        const data = await res.json();
+        rawHtml = data.contents;
+      } else {
+        rawHtml = await res.text();
+      }
+      if (rawHtml && rawHtml.length > 500) {
+        log('  Proxy ' + (i+1) + ' succeeded (' + rawHtml.length + ' bytes)', 'ok');
+        break;
+      }
+    } catch(e) {
+      log('  Proxy ' + (i+1) + ' failed: ' + e.message.slice(0,60), 'info');
+    }
+  }
+
+  if (!rawHtml || rawHtml.length < 200) {
+    throw new Error('All proxies failed. Please paste the page text into the manual text box below and try again.');
+  }
+
+  return rawHtml
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 14000);
+}
+
+async function fetchRAGContext(sbUrl, sbKey, gk) {
+  const embedRes = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=' + gk,
+    { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'models/gemini-embedding-001', content:{parts:[{text:'what page signals drive AI citations SIGNALS score dimensions grounding alignment structure'}]}, taskType:'RETRIEVAL_QUERY', outputDimensionality:768 })
+    }
+  );
+  const ed = await embedRes.json();
+  const qe = (ed.embeddings && ed.embeddings[0]) ? ed.embeddings[0].values : ed.embedding?.values;
+  const rpcRes = await fetch(sbUrl + '/rest/v1/rpc/match_aeo_knowledge', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':sbKey,'Authorization':'Bearer '+sbKey},
+    body: JSON.stringify({ query_embedding:qe, match_threshold:0.5, match_count:5 })
+  });
+  const rows = await rpcRes.json();
+  if (!rows || !rows.length) return '';
+  return rows.map(r => '[' + r.source + ']\n' + r.content).join('\n\n---\n\n');
+}
+
+const SYSTEM_PROMPT = `You are an expert AI citation audit specialist using the SIGNALS Score framework, backed by four peer-reviewed research studies. You score web pages on their likelihood of being cited by AI engines (ChatGPT, Claude, Perplexity, Google AI Overviews).
+
+SIGNALS FRAMEWORK — 7 Dimensions with weights:
+- S_structure (12%): Block layout for RAG, TL;DR, comparison tables, self-contained 200-400 word sections, H1 to H2 to H3 heading hierarchy. ConvertMate: 68.7% of cited pages use logical heading hierarchies.
+- I_intent (10%): Adjacent intents covered, H2s phrased as buyer questions, query fan-out coverage. Princeton: query fan-out means one prompt becomes multiple sub-queries.
+- G_grounding (13%): Statistics with named sources, inline citations, expert quotes, 40-60 word direct answer openings. Princeton: statistics +41%, citations +40%, quotes +28%.
+- N_newness (5%): Visible Last updated timestamp, specific dates, internal consistency across the page.
+- A_alignment (35%): THE dominant signal. Does the page vocabulary mirror how buyers formulate queries? Discovered Labs: beta=+0.37, only signal surviving domain-level controls.
+- L_language (10%): Buyer phrasing in title and H2s, fluency, clarity. Princeton: fluency +15-30%.
+- S2_substantiation (15%): Third-party validation (G2, Capterra, Reddit, press, Wikipedia), author credentials, external citations. ConvertMate: 6.5x third-party advantage.
+
+AGENTGEO PIPELINE DIAGNOSIS — determine the primary failure stage:
+- retrieval: Can AI crawlers find and fetch this page? (JS rendering, robots.txt, descriptive title)
+- parsing: Once fetched, can content be extracted? (clean HTML, heading structure, no dynamic elements)
+- ranking: Once parsed, does it rank high enough? (alignment, statistics, citations, authority)
+- generation: Even if ranked, is it quotable enough? (standalone sentences, direct answers, entity statements)
+
+Respond ONLY with valid JSON, no markdown, no preamble.
+
+JSON structure:
+{
+  "url": "string",
+  "overall_score": number,
+  "alignment_score": number,
+  "pipeline_diagnosis": {
+    "primary_failure_stage": "retrieval|parsing|ranking|generation|none",
+    "retrieval": "pass|warn|fail",
+    "parsing": "pass|warn|fail",
+    "ranking": "pass|warn|fail",
+    "generation": "pass|warn|fail",
+    "diagnosis_summary": "one sentence"
+  },
+  "dimensions": {
+    "S_structure": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
+    "I_intent": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
+    "G_grounding": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
+    "N_newness": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
+    "A_alignment": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
+    "L_language": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
+    "S2_substantiation": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"}
+  },
+  "top_3_priorities": ["string", "string", "string"],
+  "alignment_analysis": "string",
+  "citation_ready_sentences": ["string", "string"],
+  "missing_citation_anchors": ["string", "string", "string"]
+}
+
+Scoring weights: A_alignment=35%, S2_substantiation=15%, G_grounding=13%, S_structure=12%, I_intent=10%, L_language=10%, N_newness=5%.
+Pass=7+, Warn=4-6, Fail=0-3.`;
+
+async function callClaude(ck, pageText, pageUrl, ragContext) {
+  const msg = 'RESEARCH CONTEXT:\n' + ragContext + '\n\n---\n\nPAGE URL: ' + pageUrl + '\n\nPAGE CONTENT (' + pageText.length + ' chars):\n' + pageText + '\n\n---\n\nScore this page. Diagnose AgentGEO pipeline stage first. Return only JSON.';
+  const res = await fetch('https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages'), {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':ck,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2000, system:SYSTEM_PROMPT, messages:[{role:'user',content:msg}] })
+  });
+  let data;
+  try { data = await res.json(); } catch(e) { throw new Error('Claude response was not JSON. Status: ' + res.status); }
+  if (!res.ok) throw new Error('Claude API error ' + res.status + ': ' + (data.error?.message || JSON.stringify(data).slice(0,200)));
+  if (!data.content || !data.content[0]) throw new Error('Claude returned empty content: ' + JSON.stringify(data).slice(0,200));
+  const raw = data.content[0].text;
+  let parsed;
+  try { parsed = JSON.parse(raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()); }
+  catch(e) { throw new Error('Claude response was not valid JSON. Raw: ' + raw.slice(0,300)); }
+  return parsed;
+}
+
+function renderResults(audit) {
+  document.getElementById('results').classList.remove('hidden');
+  const c = getColor(audit.overall_score);
+  document.getElementById('heroScore').textContent = audit.overall_score;
+  document.getElementById('heroScore').style.color = c;
+  document.getElementById('heroUrl').textContent = audit.url;
+
+  // Pipeline
+  const stages = ['retrieval','parsing','ranking','generation'];
+  const icons = {retrieval:'🔍',parsing:'📄',ranking:'📊',generation:'✍️'};
+  const descs = {retrieval:'Can AI find & fetch?',parsing:'Content extractable?',ranking:'Ranks high enough?',generation:'Quotable enough?'};
+  const pEl = document.getElementById('pipelineStages');
+  pEl.innerHTML = '';
+  const pd = audit.pipeline_diagnosis || {};
+  stages.forEach(s => {
+    const st = pd[s] || 'warn';
+    const d = document.createElement('div');
+    d.className = 'pipeline-stage ' + st;
+    d.innerHTML = '<div style="font-size:18px">' + icons[s] + '</div><div class="stage-name">' + s + '</div><div class="stage-status" style="color:' + (st==='pass'?'#22c55e':st==='warn'?'#f59e0b':'#ef4444') + '">' + st.toUpperCase() + '</div><div style="font-size:9px;color:#444;margin-top:4px">' + descs[s] + '</div>';
+    pEl.appendChild(d);
+  });
+  if (pd.diagnosis_summary) {
+    const sum = document.createElement('div');
+    sum.style.cssText = 'width:100%;margin-top:8px;background:#0a0a18;border:1px solid #7c6af733;border-radius:6px;padding:10px 14px;font-size:11px;color:#888;line-height:1.6';
+    sum.innerHTML = '<span style="color:#7c6af7">Primary: ' + (pd.primary_failure_stage||'').toUpperCase() + '</span> — ' + pd.diagnosis_summary;
+    pEl.appendChild(sum);
+  }
+
+  // Alignment
+  const ac = getColor(audit.alignment_score * 10);
+  document.getElementById('alignScore').textContent = audit.alignment_score + '/10';
+  document.getElementById('alignScore').style.color = ac;
+  document.getElementById('alignAnalysis').textContent = audit.alignment_analysis;
+
+  // Dimensions
+  const dg = document.getElementById('dimensionsGrid');
+  dg.innerHTML = '';
+  ['A_alignment','S2_substantiation','G_grounding','S_structure','I_intent','L_language','N_newness'].forEach(key => {
+    const meta = DIMENSION_META[key];
+    const dim = (audit.dimensions || {})[key];
+    if (!dim) return;
+    const sc = getColor(dim.score * 10);
+    const el = document.createElement('div');
+    el.className = 'dim';
+    el.innerHTML =
+      '<div><div class="dim-letter" style="background:' + meta.color + '22;color:' + meta.color + '">' + meta.letter + '</div></div>' +
+      '<div>' +
+        '<div class="dim-name">' + meta.name + ' <span class="dim-weight">(' + Math.round(meta.weight*100) + '% weight)</span></div>' +
+        '<div class="source-tag">' + meta.research + '</div>' +
+        '<div class="dim-evidence">' + dim.evidence + '</div>' +
+        '<div class="dim-fix">→ ' + dim.fix + '</div>' +
+        '<div class="score-bar-bg"><div class="score-bar-fill" style="width:' + (dim.score*10) + '%;background:' + sc + '"></div></div>' +
+      '</div>' +
+      '<div><div class="dim-score-num" style="color:' + sc + '">' + dim.score + '</div><div class="dim-verdict verdict-' + dim.verdict + '">' + dim.verdict.toUpperCase() + '</div></div>';
+    dg.appendChild(el);
+  });
+
+  // Priorities
+  const pl = document.getElementById('prioritiesList');
+  pl.innerHTML = '';
+  (audit.top_3_priorities||[]).forEach((p,i) => {
+    const el = document.createElement('div');
+    el.className = 'priority-item';
+    el.innerHTML = '<span class="priority-num">#' + (i+1) + '</span>' + p;
+    pl.appendChild(el);
+  });
+
+  // Anchors
+  const cr = document.getElementById('citationReady');
+  cr.innerHTML = '';
+  (audit.citation_ready_sentences||[]).forEach(s => { const el=document.createElement('div'); el.className='anchor-item'; el.textContent='✓ '+s; cr.appendChild(el); });
+  const cm = document.getElementById('citationMissing');
+  cm.innerHTML = '';
+  (audit.missing_citation_anchors||[]).forEach(s => { const el=document.createElement('div'); el.className='missing-item'; el.textContent='+ '+s; cm.appendChild(el); });
+
+  document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+async function runAudit() {
+  const ck = document.getElementById('claudeKey').value.trim();
+  const gk = document.getElementById('geminiKey').value.trim();
+  const sbUrl = document.getElementById('sbUrl').value.trim().replace(/\/$/,'');
+  const sbKey = document.getElementById('sbKey').value.trim();
+  const pageUrl = document.getElementById('pageUrl').value.trim();
+  if (!ck||!gk||!sbUrl||!sbKey||!pageUrl) { alert('Fill in all fields.'); return; }
+
+  const btn = document.getElementById('auditBtn');
+  btn.disabled = true; btn.textContent = 'Auditing...';
+  document.getElementById('results').classList.add('hidden');
+
+  try {
+    log('=== SIGNALS Audit Starting ===','head');
+    log('URL: ' + pageUrl,'info');
+    log('Step 1/4: Fetching page...','info');
+    let pageText = '';
+    const manualText = document.getElementById('pageTextManual').value.trim();
+    if (manualText.length > 100) {
+      pageText = manualText.slice(0, 14000);
+      log('Using manually pasted text — ' + pageText.length + ' characters','ok');
+    } else {
+      pageText = await fetchPageText(pageUrl);
+      log('Got ' + pageText.length + ' characters','ok');
+    }
+
+    log('Step 2/4: Retrieving research context from Supabase...','info');
+    const rag = await fetchRAGContext(sbUrl, sbKey, gk);
+    log('RAG context: ' + (rag ? rag.split('---').length + ' chunks' : 'none'),'ok');
+
+    log('Step 3/4: Claude SIGNALS scoring...','info');
+    const audit = await callClaude(ck, pageText, pageUrl, rag);
+    log('SIGNALS Score: ' + audit.overall_score + '/100','ok');
+    log('Alignment: ' + audit.alignment_score + '/10','ok');
+    log('Primary failure: ' + (audit.pipeline_diagnosis?.primary_failure_stage||'unknown').toUpperCase(),'ok');
+
+    log('Step 4/4: Rendering...','info');
+    renderResults(audit);
+    log('=== Done ===','head');
+  } catch(e) {
+    log('ERROR: ' + e.message,'err');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run SIGNALS Audit';
+  }
+}
+</script>
+</body>
+</html>
