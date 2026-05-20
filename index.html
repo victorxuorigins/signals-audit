@@ -195,7 +195,7 @@ async function fetchPageText(url) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 14000);
+    .slice(0, 8000);
 }
 
 async function fetchRAGContext(sbUrl, sbKey, gk) {
@@ -210,65 +210,37 @@ async function fetchRAGContext(sbUrl, sbKey, gk) {
   const rpcRes = await fetch(sbUrl + '/rest/v1/rpc/match_aeo_knowledge', {
     method:'POST',
     headers:{'Content-Type':'application/json','apikey':sbKey,'Authorization':'Bearer '+sbKey},
-    body: JSON.stringify({ query_embedding:qe, match_threshold:0.5, match_count:5 })
+    body: JSON.stringify({ query_embedding:qe, match_threshold:0.5, match_count:3 })
   });
   const rows = await rpcRes.json();
   if (!rows || !rows.length) return '';
   return rows.map(r => '[' + r.source + ']\n' + r.content).join('\n\n---\n\n');
 }
 
-const SYSTEM_PROMPT = `You are an expert AI citation audit specialist using the SIGNALS Score framework, backed by four peer-reviewed research studies. You score web pages on their likelihood of being cited by AI engines (ChatGPT, Claude, Perplexity, Google AI Overviews).
+const SYSTEM_PROMPT = `You are an AI citation audit specialist. Score web pages on AI citation readiness using the SIGNALS framework.
 
-SIGNALS FRAMEWORK — 7 Dimensions with weights:
-- S_structure (12%): Block layout for RAG, TL;DR, comparison tables, self-contained 200-400 word sections, H1 to H2 to H3 heading hierarchy. ConvertMate: 68.7% of cited pages use logical heading hierarchies.
-- I_intent (10%): Adjacent intents covered, H2s phrased as buyer questions, query fan-out coverage. Princeton: query fan-out means one prompt becomes multiple sub-queries.
-- G_grounding (13%): Statistics with named sources, inline citations, expert quotes, 40-60 word direct answer openings. Princeton: statistics +41%, citations +40%, quotes +28%.
-- N_newness (5%): Visible Last updated timestamp, specific dates, internal consistency across the page.
-- A_alignment (35%): THE dominant signal. Does the page vocabulary mirror how buyers formulate queries? Discovered Labs: beta=+0.37, only signal surviving domain-level controls.
-- L_language (10%): Buyer phrasing in title and H2s, fluency, clarity. Princeton: fluency +15-30%.
-- S2_substantiation (15%): Third-party validation (G2, Capterra, Reddit, press, Wikipedia), author credentials, external citations. ConvertMate: 6.5x third-party advantage.
+SIGNALS DIMENSIONS (with weights):
+S_structure (12%): heading hierarchy H1>H2>H3, TL;DR box, comparison tables, self-contained 200-400 word sections
+I_intent (10%): adjacent intents covered, H2s as buyer questions, query fan-out coverage
+G_grounding (13%): statistics with sources, inline citations, expert quotes, direct answer openings
+N_newness (5%): visible Last Updated timestamp, specific dates, internal consistency
+A_alignment (35%): THE dominant signal - does vocabulary mirror how buyers search? (Discovered Labs: beta=+0.37)
+L_language (10%): buyer phrasing in title/H2s, fluency, title matches a real search query
+S2_substantiation (15%): G2/Reddit/press mentions, author credentials, external citations
 
-AGENTGEO PIPELINE DIAGNOSIS — determine the primary failure stage:
-- retrieval: Can AI crawlers find and fetch this page? (JS rendering, robots.txt, descriptive title)
-- parsing: Once fetched, can content be extracted? (clean HTML, heading structure, no dynamic elements)
-- ranking: Once parsed, does it rank high enough? (alignment, statistics, citations, authority)
-- generation: Even if ranked, is it quotable enough? (standalone sentences, direct answers, entity statements)
+AGENTGEO PIPELINE - identify primary failure:
+retrieval: can AI crawlers find/fetch this page?
+parsing: can content be extracted cleanly?
+ranking: does it rank high enough vs competitors?
+generation: is content quotable as standalone units?
 
-Respond ONLY with valid JSON, no markdown, no preamble.
+Respond ONLY with this exact JSON (no markdown, no fences):
+{"url":"string","overall_score":number,"alignment_score":number,"pipeline_diagnosis":{"primary_failure_stage":"retrieval|parsing|ranking|generation|none","retrieval":"pass|warn|fail","parsing":"pass|warn|fail","ranking":"pass|warn|fail","generation":"pass|warn|fail","diagnosis_summary":"one sentence under 120 chars"},"dimensions":{"S_structure":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"I_intent":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"G_grounding":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"N_newness":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"A_alignment":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"L_language":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"},"S2_substantiation":{"score":number,"verdict":"Pass|Warn|Fail","evidence":"under 100 chars","fix":"under 100 chars"}},"top_3_priorities":["string","string","string"],"alignment_analysis":"2-3 sentences on buyer language match and gaps","citation_ready_sentences":["string","string"],"missing_citation_anchors":["string","string","string"]}
 
-JSON structure:
-{
-  "url": "string",
-  "overall_score": number,
-  "alignment_score": number,
-  "pipeline_diagnosis": {
-    "primary_failure_stage": "retrieval|parsing|ranking|generation|none",
-    "retrieval": "pass|warn|fail",
-    "parsing": "pass|warn|fail",
-    "ranking": "pass|warn|fail",
-    "generation": "pass|warn|fail",
-    "diagnosis_summary": "one sentence"
-  },
-  "dimensions": {
-    "S_structure": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
-    "I_intent": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
-    "G_grounding": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
-    "N_newness": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
-    "A_alignment": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
-    "L_language": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"},
-    "S2_substantiation": {"score": number, "verdict": "Pass|Warn|Fail", "evidence": "string", "fix": "string"}
-  },
-  "top_3_priorities": ["string", "string", "string"],
-  "alignment_analysis": "string",
-  "citation_ready_sentences": ["string", "string"],
-  "missing_citation_anchors": ["string", "string", "string"]
-}
-
-Scoring weights: A_alignment=35%, S2_substantiation=15%, G_grounding=13%, S_structure=12%, I_intent=10%, L_language=10%, N_newness=5%.
-Pass=7+, Warn=4-6, Fail=0-3.`;
+Weights: A_alignment=35%, S2_substantiation=15%, G_grounding=13%, S_structure=12%, I_intent=10%, L_language=10%, N_newness=5%. Pass=7+, Warn=4-6, Fail=0-3.`;
 
 async function callClaude(ck, pageText, pageUrl, ragContext) {
-  const msg = 'RESEARCH CONTEXT:\n' + ragContext + '\n\n---\n\nPAGE URL: ' + pageUrl + '\n\nPAGE CONTENT (' + pageText.length + ' chars):\n' + pageText + '\n\n---\n\nScore this page. Diagnose AgentGEO pipeline stage first. Return only JSON.';
+  const msg = 'RESEARCH CONTEXT:\n' + ragContext + '\n\n---\n\nPAGE URL: ' + pageUrl + '\n\nPAGE CONTENT (' + pageText.length + ' chars):\n' + pageText + '\n\n---\n\nScore this page. Return ONLY the JSON object. Keep evidence and fix fields under 100 characters each. No markdown fences.';
 
   // Direct call to Anthropic API with browser CORS header
   // anthropic-dangerous-direct-browser-access enables browser-to-API calls
@@ -284,7 +256,7 @@ async function callClaude(ck, pageText, pageUrl, ragContext) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: msg }]
       })
@@ -301,7 +273,17 @@ async function callClaude(ck, pageText, pageUrl, ragContext) {
 
   const raw = data.content[0].text;
   let parsed;
-  try { parsed = JSON.parse(raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()); }
+  try {
+    // Strip markdown fences and find the JSON object
+    let clean = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    // If still not valid, find the first { and last }
+    if (!clean.startsWith('{')) {
+      const start = clean.indexOf('{');
+      const end = clean.lastIndexOf('}');
+      if (start !== -1 && end !== -1) clean = clean.slice(start, end+1);
+    }
+    parsed = JSON.parse(clean);
+  }
   catch(e) { throw new Error('Claude JSON parse failed. Raw: ' + raw.slice(0,400)); }
   return parsed;
 }
@@ -403,7 +385,7 @@ async function runAudit() {
     let pageText = '';
     const manualText = document.getElementById('pageTextManual').value.trim();
     if (manualText.length > 100) {
-      pageText = manualText.slice(0, 14000);
+      pageText = manualText.slice(0, 8000);
       log('Using manually pasted text — ' + pageText.length + ' characters','ok');
     } else {
       pageText = await fetchPageText(pageUrl);
