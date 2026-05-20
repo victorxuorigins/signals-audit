@@ -269,19 +269,40 @@ Pass=7+, Warn=4-6, Fail=0-3.`;
 
 async function callClaude(ck, pageText, pageUrl, ragContext) {
   const msg = 'RESEARCH CONTEXT:\n' + ragContext + '\n\n---\n\nPAGE URL: ' + pageUrl + '\n\nPAGE CONTENT (' + pageText.length + ' chars):\n' + pageText + '\n\n---\n\nScore this page. Diagnose AgentGEO pipeline stage first. Return only JSON.';
-  const res = await fetch('https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages'), {
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':ck,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2000, system:SYSTEM_PROMPT, messages:[{role:'user',content:msg}] })
-  });
+
+  // Direct call to Anthropic API with browser CORS header
+  // anthropic-dangerous-direct-browser-access enables browser-to-API calls
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ck,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: msg }]
+      })
+    });
+  } catch(e) {
+    // CORS fallback: try via n8n webhook if configured, else throw
+    throw new Error('Direct API call blocked by CORS. Fix: open this file via a local server instead of file://. Run: python3 -m http.server 8080 in the same folder, then open http://localhost:8080/signals-audit.html');
+  }
+
   let data;
-  try { data = await res.json(); } catch(e) { throw new Error('Claude response was not JSON. Status: ' + res.status); }
-  if (!res.ok) throw new Error('Claude API error ' + res.status + ': ' + (data.error?.message || JSON.stringify(data).slice(0,200)));
-  if (!data.content || !data.content[0]) throw new Error('Claude returned empty content: ' + JSON.stringify(data).slice(0,200));
+  try { data = await res.json(); } catch(e) { throw new Error('Claude response not JSON. Status: ' + res.status); }
+  if (!res.ok) throw new Error('Claude API ' + res.status + ': ' + (data.error?.message || JSON.stringify(data).slice(0,300)));
+  if (!data.content || !data.content[0]) throw new Error('Empty Claude response: ' + JSON.stringify(data).slice(0,200));
+
   const raw = data.content[0].text;
   let parsed;
   try { parsed = JSON.parse(raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()); }
-  catch(e) { throw new Error('Claude response was not valid JSON. Raw: ' + raw.slice(0,300)); }
+  catch(e) { throw new Error('Claude JSON parse failed. Raw: ' + raw.slice(0,400)); }
   return parsed;
 }
 
