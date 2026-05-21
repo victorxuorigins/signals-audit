@@ -938,20 +938,20 @@ async function crawlDomain() {
   log('=== Discovering pages on ' + domain + ' ===', 'head');
 
   try {
+    // Step 1: Try sitemap first
+    log('Checking sitemap...', 'info');
     discoveredUrls = await fetchSitemapUrls(domain);
 
+    // Step 2: If no sitemap, extract links directly from HTML
     if (discoveredUrls.length === 0) {
-      // Sitemap not found — try crawling homepage links
-      log('No sitemap found — crawling homepage links...', 'info');
-      try {
-        const pageText = await fetchPageText(domain);
-        // Extract internal links from page text isn't perfect but gets main pages
-        // Since we stripped HTML, just offer the homepage
-        discoveredUrls = [domain + '/'];
-        log('Using homepage only — no sitemap found', 'info');
-      } catch(e) {
-        discoveredUrls = [domain + '/'];
-      }
+      log('No sitemap found — extracting links from homepage HTML...', 'info');
+      discoveredUrls = await extractLinksFromPage(domain);
+    }
+
+    // Step 3: If still nothing, just use homepage
+    if (discoveredUrls.length === 0) {
+      discoveredUrls = [domain + '/'];
+      log('Using homepage only', 'info');
     }
 
     log('Found ' + discoveredUrls.length + ' pages', 'ok');
@@ -963,6 +963,93 @@ async function crawlDomain() {
   } finally {
     btn.disabled = false; btn.textContent = '&#128269; Discover Pages';
   }
+}
+
+async function extractLinksFromPage(domain) {
+  const proxies = [
+    'https://corsproxy.io/?' + encodeURIComponent(domain),
+    'https://api.allorigins.win/get?url=' + encodeURIComponent(domain),
+    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(domain)
+  ];
+
+  let rawHtml = null;
+  for (const proxy of proxies) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(proxy, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      if (proxy.includes('allorigins')) {
+        const data = await res.json();
+        rawHtml = data.contents;
+      } else {
+        rawHtml = await res.text();
+      }
+      if (rawHtml && rawHtml.length > 1000) break;
+    } catch(e) { continue; }
+  }
+
+  if (!rawHtml) return [];
+
+  // Extract all href links from raw HTML
+  const linkPattern = /href=["']([^"'#?]+)["']/gi;
+  const seen = new Set();
+  const urls = [];
+  let match;
+
+  while ((match = linkPattern.exec(rawHtml)) !== null) {
+    let href = match[1].trim();
+
+    // Skip non-page links
+    if (!href || href === '/' ) continue;
+    if (/\.(jpg|jpeg|png|gif|svg|webp|pdf|zip|css|js|xml|ico|woff|mp4|mp3)$/i.test(href)) continue;
+    if (/^(mailto:|tel:|javascript:|#)/.test(href)) continue;
+
+    // Resolve relative URLs
+    if (href.startsWith('/')) {
+      href = domain + href;
+    } else if (!href.startsWith('http')) {
+      href = domain + '/' + href;
+    }
+
+    // Only keep internal links
+    try {
+      const url = new URL(href);
+      const domainHost = new URL(domain).host;
+      if (url.host !== domainHost) continue;
+      // Clean URL — remove trailing slash variation duplicates
+      const clean = url.origin + url.pathname.replace(/\/$/, '');
+      if (!seen.has(clean) && clean !== domain) {
+        seen.add(clean);
+        urls.push(clean);
+      }
+    } catch(e) { continue; }
+  }
+
+  // Also add homepage
+  if (!seen.has(domain)) urls.unshift(domain + '/');
+
+  log('Extracted ' + urls.length + ' internal links from homepage', 'ok');
+
+  // If few links found, also try common page paths
+  if (urls.length < 5) {
+    const commonPaths = ['/about', '/services', '/pricing', '/blog', '/contact',
+      '/products', '/solutions', '/team', '/case-studies', '/resources'];
+    for (const path of commonPaths) {
+      const url = domain + path;
+      if (!seen.has(url)) {
+        try {
+          const res = await fetch('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+            { signal: AbortSignal.timeout(5000) });
+          if (res.ok) { urls.push(url); seen.add(url); }
+        } catch(e) { continue; }
+      }
+    }
+    if (urls.length > 1) log('Added common pages via path probing', 'ok');
+  }
+
+  return urls;
 }
 
 function renderPageSelector(urls, domain) {
