@@ -74,13 +74,39 @@ h1 { font-size: 22px; color: #7c6af7; letter-spacing: 3px; text-transform: upper
 </div>
 
 <div class="card">
-  <h2>Page to Audit</h2>
-  <div class="field"><label>URL — paste any page to audit</label><input type="text" id="pageUrl" placeholder="https://example.com/your-page" /></div>
-  <div class="field">
-    <label>OR paste page text directly (use this if URL fetch fails)</label>
-    <textarea id="pageTextManual" placeholder="Paste the full page text here as a fallback..." style="width:100%;background:#080810;border:1px solid #1e1e35;border-radius:4px;padding:9px 12px;color:#e0e0e0;font-family:'Courier New',monospace;font-size:11px;height:80px;resize:vertical;outline:none;"></textarea>
+  <h2>Audit Mode</h2>
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button onclick="setMode('single')" id="modeSingle" class="btn" style="flex:1;">Single Page</button>
+    <button onclick="setMode('domain')" id="modeDomain" class="btn" style="flex:1;background:#1e1e35;color:#7c6af7;border:1px solid #7c6af7;">Full Domain</button>
   </div>
-  <button class="btn" id="auditBtn" onclick="runAudit()">&#9654; Run SIGNALS Audit</button>
+  <div id="singleMode">
+    <div class="field"><label>Page URL</label><input type="text" id="pageUrl" placeholder="https://example.com/your-page" /></div>
+    <div class="field">
+      <label>Or paste page text directly (fallback if URL fetch fails)</label>
+      <textarea id="pageTextManual" placeholder="Paste full page text here..." style="width:100%;background:#080810;border:1px solid #1e1e35;border-radius:4px;padding:9px 12px;color:#e0e0e0;font-family:'Courier New',monospace;font-size:11px;height:80px;resize:vertical;outline:none;"></textarea>
+    </div>
+    <button class="btn" id="auditBtn" onclick="runAudit()">&#9654; Run SIGNALS Audit</button>
+  </div>
+  <div id="domainMode" class="hidden">
+    <div class="field"><label>Domain URL</label><input type="text" id="domainUrl" placeholder="https://example.com" /></div>
+    <button class="btn" id="crawlBtn" onclick="crawlDomain()" style="margin-bottom:16px;">&#128269; Discover Pages</button>
+
+    <!-- Page selector — shown after crawl -->
+    <div id="pageSelector" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:11px;color:#7c6af7;" id="pageSelectorCount"></span>
+        <div style="display:flex;gap:8px;">
+          <button onclick="selectAllPages(true)" style="font-size:10px;background:transparent;border:1px solid #333;color:#666;padding:3px 10px;border-radius:3px;cursor:pointer;">Select All</button>
+          <button onclick="selectAllPages(false)" style="font-size:10px;background:transparent;border:1px solid #333;color:#666;padding:3px 10px;border-radius:3px;cursor:pointer;">Deselect All</button>
+        </div>
+      </div>
+      <div id="pageCheckboxList" style="max-height:280px;overflow-y:auto;background:#080810;border:1px solid #1e1e35;border-radius:6px;padding:8px;"></div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button class="btn" id="domainAuditBtn" onclick="runDomainAudit()">&#9654; Audit Selected Pages</button>
+        <span style="font-size:10px;color:#333;" id="selectedCostEstimate"></span>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="log-wrap" id="log"></div>
@@ -127,7 +153,19 @@ h1 { font-size: 22px; color: #7c6af7; letter-spacing: 3px; text-transform: upper
     <div id="fixesOutput" class="hidden" style="margin-top:20px;">
       <div class="section-title">Generated Fixes — Copy & Paste Into Your CMS</div>
       <div id="fixesContent" style="background:#050508;border:1px solid #1e1e35;border-radius:8px;padding:16px;font-size:11px;color:#888;line-height:1.8;white-space:pre-wrap;max-height:500px;overflow-y:auto;"></div>
-      <button onclick="copyFixes()" style="margin-top:12px;background:transparent;border:1px solid #7c6af7;color:#7c6af7;border-radius:4px;padding:6px 16px;font-family:monospace;font-size:11px;cursor:pointer;">Copy All Fixes</button>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button onclick="copyFixes()" style="background:transparent;border:1px solid #7c6af7;color:#7c6af7;border-radius:4px;padding:6px 16px;font-family:monospace;font-size:11px;cursor:pointer;">Copy All Fixes</button>
+        <button onclick="toggleWpPanel()" style="background:#1e1e35;border:1px solid #22c55e;color:#22c55e;border-radius:4px;padding:6px 16px;font-family:monospace;font-size:11px;cursor:pointer;">&#8679; Apply to WordPress</button>
+      </div>
+      <div id="wpPanel" class="hidden" style="margin-top:16px;background:#080810;border:1px solid #22c55e33;border-radius:8px;padding:16px;">
+        <p style="font-size:11px;color:#555;line-height:1.8;margin-bottom:12px;"><b style="color:#888;">How to get an Application Password:</b> WordPress dashboard → Users → Profile → scroll to Application Passwords → type any name → click Add New → copy the password shown.</p>
+        <div style="display:grid;gap:8px;margin-bottom:12px;">
+          <input type="text" id="wpUrl" placeholder="WordPress site URL: https://yoursite.com" style="width:100%;background:#0a0a18;border:1px solid #1e1e35;border-radius:4px;padding:8px 12px;color:#e0e0e0;font-family:monospace;font-size:11px;outline:none;" />
+          <input type="text" id="wpUser" placeholder="WordPress username" style="width:100%;background:#0a0a18;border:1px solid #1e1e35;border-radius:4px;padding:8px 12px;color:#e0e0e0;font-family:monospace;font-size:11px;outline:none;" />
+          <input type="text" id="wpPass" placeholder="Application password: xxxx xxxx xxxx xxxx" style="width:100%;background:#0a0a18;border:1px solid #1e1e35;border-radius:4px;padding:8px 12px;color:#e0e0e0;font-family:monospace;font-size:11px;outline:none;" />
+        </div>
+        <button id="applyWpBtn" onclick="applyFixesToWordPress()" style="background:#22c55e22;border:1px solid #22c55e;color:#22c55e;border-radius:4px;padding:8px 20px;font-family:monospace;font-size:11px;cursor:pointer;font-weight:bold;">Apply Fixes to WordPress Now</button>
+      </div>
     </div>
   </div>
 
@@ -534,6 +572,442 @@ function copyFixes() {
   const text = document.getElementById('fixesContent').textContent;
   navigator.clipboard.writeText(text).then(() => alert('Fixes copied to clipboard!'));
 }
+
+// ─── MODE SWITCHER ────────────────────────────────────────────────────────────
+function setMode(mode) {
+  if (mode === 'single') {
+    document.getElementById('singleMode').classList.remove('hidden');
+    document.getElementById('domainMode').classList.add('hidden');
+    document.getElementById('modeSingle').style.cssText = 'flex:1;';
+    document.getElementById('modeDomain').style.cssText = 'flex:1;background:#1e1e35;color:#7c6af7;border:1px solid #7c6af7;';
+  } else {
+    document.getElementById('singleMode').classList.add('hidden');
+    document.getElementById('domainMode').classList.remove('hidden');
+    document.getElementById('modeSingle').style.cssText = 'flex:1;background:#1e1e35;color:#7c6af7;border:1px solid #7c6af7;';
+    document.getElementById('modeDomain').style.cssText = 'flex:1;';
+  }
+}
+
+// ─── WORDPRESS APPLY FIXES ───────────────────────────────────────────────────
+async function applyToWordPress(postId, newContent) {
+  const wpUrl = document.getElementById('wpUrl').value.trim().replace(/\/$/, '');
+  const wpUser = document.getElementById('wpUser').value.trim();
+  const wpPass = document.getElementById('wpPass').value.trim();
+
+  if (!wpUrl || !wpUser || !wpPass) {
+    alert('Fill in WordPress credentials in the WordPress Integration section above.');
+    return false;
+  }
+
+  const credentials = btoa(wpUser + ':' + wpPass);
+
+  // Try posts endpoint first, then pages
+  const endpoints = [
+    wpUrl + '/wp-json/wp/v2/posts/' + postId,
+    wpUrl + '/wp-json/wp/v2/pages/' + postId
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + credentials
+        },
+        body: JSON.stringify({ content: newContent })
+      });
+      if (res.ok) return true;
+    } catch(e) { continue; }
+  }
+  return false;
+}
+
+async function findWordPressPostId(url) {
+  const wpUrl = document.getElementById('wpUrl').value.trim().replace(/\/$/, '');
+  const wpUser = document.getElementById('wpUser').value.trim();
+  const wpPass = document.getElementById('wpPass').value.trim();
+  const credentials = btoa(wpUser + ':' + wpPass);
+
+  // Search posts and pages for matching URL
+  for (const type of ['posts', 'pages']) {
+    try {
+      const res = await fetch(wpUrl + '/wp-json/wp/v2/' + type + '?per_page=100', {
+        headers: { 'Authorization': 'Basic ' + credentials }
+      });
+      if (!res.ok) continue;
+      const items = await res.json();
+      const match = items.find(item => item.link === url || item.link === url + '/');
+      if (match) return { id: match.id, type, currentContent: match.content?.rendered || '' };
+    } catch(e) { continue; }
+  }
+  return null;
+}
+
+async function applyFixesToWordPress() {
+  if (!currentAuditData) { alert('Run an audit first.'); return; }
+  const fixes = document.getElementById('fixesContent').textContent;
+  if (!fixes) { alert('Generate fixes first.'); return; }
+
+  const btn = document.getElementById('applyWpBtn');
+  btn.disabled = true; btn.textContent = 'Connecting to WordPress...';
+
+  try {
+    // Find the post/page ID
+    btn.textContent = 'Finding page in WordPress...';
+    const post = await findWordPressPostId(currentAuditData.url);
+    if (!post) throw new Error('Page not found in WordPress. Make sure the WordPress URL matches your site and the credentials are correct.');
+
+    // Build updated content: prepend generated fixes to existing content
+    const blufMatch = fixes.match(/===BLUF OPENING[^=]*===([\s\S]*?)(?====)/);
+    const faqMatch = fixes.match(/===FAQ SECTION[^=]*===([\s\S]*?)(?====)/);
+    const schemaMatch = fixes.match(/===JSON-LD SCHEMA===([\s\S]*?)(?====|$)/);
+    const factsMatch = fixes.match(/===KEY FACTS BOX[^=]*===([\s\S]*?)(?====)/);
+
+    let newContent = '';
+
+    if (blufMatch) {
+      newContent += '<div class="signals-bluf" style="background:#f8f9fa;border-left:4px solid #6366f1;padding:20px;margin-bottom:24px;">' +
+        '<p>' + blufMatch[1].trim() + '</p></div>\n\n';
+    }
+
+    if (factsMatch) {
+      // Convert markdown table to HTML
+      const tableRows = factsMatch[1].trim().split('\n').filter(r => r.includes('|') && !r.includes('---'));
+      if (tableRows.length > 1) {
+        newContent += '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">';
+        tableRows.forEach((row, i) => {
+          const cells = row.split('|').filter(c => c.trim());
+          const tag = i === 0 ? 'th' : 'td';
+          const style = i === 0 ? 'background:#f0f0ff;font-weight:bold;' : '';
+          newContent += '<tr>' + cells.map(c =>
+            `<${tag} style="border:1px solid #ddd;padding:8px;${style}">${c.trim()}</${tag}>`
+          ).join('') + '</tr>';
+        });
+        newContent += '</table>\n\n';
+      }
+    }
+
+    // Add existing content
+    newContent += post.currentContent;
+
+    if (faqMatch) {
+      newContent += '\n\n<div class="signals-faq"><h2>Frequently Asked Questions</h2>';
+      const qaBlocks = faqMatch[1].trim().split(/Q:/).filter(b => b.trim());
+      qaBlocks.forEach(block => {
+        const parts = block.split(/A:/);
+        if (parts.length === 2) {
+          newContent += '<div style="margin-bottom:20px;"><h3>' + parts[0].trim() + '</h3><p>' + parts[1].trim() + '</p></div>';
+        }
+      });
+      newContent += '</div>';
+    }
+
+    if (schemaMatch) {
+      newContent += '\n\n' + schemaMatch[1].trim();
+    }
+
+    btn.textContent = 'Applying to WordPress...';
+    const success = await applyToWordPress(post.id, newContent);
+
+    if (success) {
+      btn.textContent = '✓ Applied!';
+      btn.style.background = '#22c55e';
+      alert('Success! Page updated in WordPress. Refresh your site to see the changes.');
+    } else {
+      throw new Error('WordPress API rejected the update. Check your Application Password has edit permissions.');
+    }
+  } catch(e) {
+    alert('WordPress error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '&#8679; Apply to WordPress';
+  }
+}
+
+// ─── DOMAIN CRAWLER ──────────────────────────────────────────────────────────
+let domainResults = [];
+
+async function fetchSitemapUrls(domain) {
+  const sitemapUrls = [
+    domain + '/sitemap.xml',
+    domain + '/sitemap_index.xml',
+    domain + '/wp-sitemap.xml'
+  ];
+
+  for (const sitemapUrl of sitemapUrls) {
+    try {
+      const proxy = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(sitemapUrl);
+      const res = await fetch(proxy, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      // Extract URLs from sitemap
+      const urls = [];
+      const matches = xml.matchAll(/<loc>(.*?)<\/loc>/g);
+      for (const match of matches) {
+        const url = match[1].trim();
+        // Skip sub-sitemaps, images, non-page URLs
+        if (!url.endsWith('.xml') && !url.includes('/feed') && !url.includes('wp-content')) {
+          urls.push(url);
+        }
+      }
+      if (urls.length > 0) return urls;
+    } catch(e) { continue; }
+  }
+  return [];
+}
+
+async function runDomainAudit() {
+  const ck = document.getElementById('claudeKey').value.trim();
+  const gk = document.getElementById('geminiKey').value.trim();
+  const sbUrl = document.getElementById('sbUrl').value.trim().replace(/\/$/, '');
+  const sbKey = document.getElementById('sbKey').value.trim();
+  const domain = document.getElementById('domainUrl').value.trim().replace(/\/$/, '');
+
+  if (!ck || !gk || !sbUrl || !sbKey || !domain) { alert('Fill in all credentials and domain.'); return; }
+
+  const selectedUrls = getSelectedUrls();
+  if (selectedUrls.length === 0) { alert('Discover pages first, then select which to audit.'); return; }
+
+  const btn = document.getElementById('domainAuditBtn');
+  btn.disabled = true; btn.textContent = 'Auditing...';
+  btn.textContent = 'Auditing ' + selectedUrls.length + ' pages...';
+  domainResults = [];
+
+  // Show domain results table
+  let resultsHtml = document.getElementById('domainResults');
+  if (!resultsHtml) {
+    const div = document.createElement('div');
+    div.id = 'domainResults';
+    div.className = 'card';
+    document.getElementById('results').parentNode.insertBefore(div, document.getElementById('results'));
+  }
+  document.getElementById('domainResults').innerHTML = '<h2 style="font-size:11px;color:#7c6af7;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;">Domain Audit Results</h2><div id="domainProgress" style="font-size:11px;color:#888;"></div><div id="domainTable"></div>';
+  document.getElementById('domainResults').classList.remove('hidden');
+
+  log('=== Domain Audit Starting ===', 'head');
+  log('Domain: ' + domain, 'info');
+
+  try {
+    // Use pre-selected URLs from the page selector
+    const urls = selectedUrls;
+    log('Auditing ' + urls.length + ' selected pages...', 'info');
+
+    // Step 2: Audit each page
+    const rag = await fetchRAGContext(sbUrl, sbKey, gk);
+
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      document.getElementById('domainProgress').textContent =
+        'Auditing page ' + (i+1) + '/' + urls.length + ': ' + url;
+      log('(' + (i+1) + '/' + urls.length + ') ' + url, 'info');
+
+      let result = { url, score: 'Error', alignment: '-', pipeline: '-', error: '' };
+
+      try {
+        const pageText = await fetchPageText(url);
+        const audit = await callClaude(ck, pageText, url, rag);
+        if (audit.overall_score <= 10) audit.overall_score = Math.round(audit.overall_score * 10);
+        result = {
+          url,
+          score: audit.overall_score,
+          alignment: audit.alignment_score,
+          pipeline: audit.pipeline_diagnosis?.primary_failure_stage || '-',
+          priority1: audit.top_3_priorities?.[0] || '-',
+          verdict: audit.overall_score >= 70 ? 'pass' : audit.overall_score >= 45 ? 'warn' : 'fail'
+        };
+        domainResults.push({ url, audit });
+      } catch(e) {
+        result.error = e.message.slice(0, 60);
+        log('  Error: ' + result.error, 'err');
+      }
+
+      // Update table
+      renderDomainTable();
+
+      // Rate limit: wait 2s between Claude calls
+      if (i < urls.length - 1) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    log('=== Domain Audit Complete: ' + domainResults.length + '/' + urls.length + ' pages ===', 'head');
+    document.getElementById('domainProgress').textContent = 'Complete — ' + domainResults.length + ' pages audited';
+
+    // Add download CSV button
+    const dlBtn = document.createElement('button');
+    dlBtn.textContent = '↓ Download CSV Report';
+    dlBtn.style.cssText = 'margin-top:16px;background:#1e1e35;color:#7c6af7;border:1px solid #7c6af7;border-radius:4px;padding:8px 16px;font-family:monospace;font-size:11px;cursor:pointer;';
+    dlBtn.onclick = downloadDomainCSV;
+    document.getElementById('domainResults').appendChild(dlBtn);
+
+  } catch(e) {
+    log('Domain audit error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '&#9654; Crawl & Audit Domain';
+  }
+}
+
+function renderDomainTable() {
+  const tableDiv = document.getElementById('domainTable');
+  const sortedResults = [...domainResults].sort((a, b) => {
+    const sa = a.audit?.overall_score || 0;
+    const sb = b.audit?.overall_score || 0;
+    return sa - sb; // worst first
+  });
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:12px;">';
+  html += '<tr style="border-bottom:1px solid #1e1e35;"><th style="text-align:left;padding:8px;color:#555;">URL</th><th style="padding:8px;color:#555;">Score</th><th style="padding:8px;color:#555;">Alignment</th><th style="padding:8px;color:#555;">Bottleneck</th><th style="text-align:left;padding:8px;color:#555;">Top Priority</th></tr>';
+
+  sortedResults.forEach(r => {
+    const audit = r.audit;
+    const score = audit?.overall_score || 0;
+    const color = score >= 70 ? '#22c55e' : score >= 45 ? '#f59e0b' : '#ef4444';
+    const shortUrl = r.url.replace(/https?:\/\/[^\/]+/, '').slice(0, 50) || '/';
+    const pipeline = audit?.pipeline_diagnosis?.primary_failure_stage || '-';
+    const p1 = (audit?.top_3_priorities?.[0] || '-').slice(0, 60);
+    html += `<tr style="border-bottom:1px solid #1e1e35;cursor:pointer;" onclick="showPageDetail('${r.url}')">
+      <td style="padding:8px;color:#888;" title="${r.url}">${shortUrl}</td>
+      <td style="padding:8px;text-align:center;font-weight:bold;color:${color};">${score}</td>
+      <td style="padding:8px;text-align:center;color:#7c6af7;">${audit?.alignment_score || '-'}/10</td>
+      <td style="padding:8px;text-align:center;color:#f59e0b;">${pipeline}</td>
+      <td style="padding:8px;color:#555;">${p1}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  html += '<p style="font-size:10px;color:#333;margin-top:8px;">Click any row to see full audit. Sorted by score ascending (worst first).</p>';
+  tableDiv.innerHTML = html;
+}
+
+function showPageDetail(url) {
+  const entry = domainResults.find(r => r.url === url);
+  if (!entry) return;
+  currentAuditData = entry.audit;
+  renderResults(entry.audit);
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+}
+
+function downloadDomainCSV() {
+  const rows = [['URL', 'SIGNALS Score', 'Alignment', 'Pipeline Bottleneck', 'S_structure', 'I_intent', 'G_grounding', 'N_newness', 'A_alignment', 'L_language', 'S2_substantiation', 'Top Priority 1', 'Top Priority 2', 'Top Priority 3']];
+  domainResults.forEach(r => {
+    const a = r.audit;
+    const d = a.dimensions || {};
+    rows.push([
+      r.url,
+      a.overall_score,
+      a.alignment_score,
+      a.pipeline_diagnosis?.primary_failure_stage || '',
+      d.S_structure?.score || '',
+      d.I_intent?.score || '',
+      d.G_grounding?.score || '',
+      d.N_newness?.score || '',
+      d.A_alignment?.score || '',
+      d.L_language?.score || '',
+      d.S2_substantiation?.score || '',
+      (a.top_3_priorities?.[0] || '').replace(/,/g, ';'),
+      (a.top_3_priorities?.[1] || '').replace(/,/g, ';'),
+      (a.top_3_priorities?.[2] || '').replace(/,/g, ';')
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'SIGNALS-Domain-Audit.csv';
+  a.click();
+}
+
+
+// ─── TOGGLE WP PANEL ─────────────────────────────────────────────────────────
+function toggleWpPanel() {
+  const panel = document.getElementById('wpPanel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) {
+    panel.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+// ─── CRAWL DOMAIN FIRST ──────────────────────────────────────────────────────
+let discoveredUrls = [];
+
+async function crawlDomain() {
+  const domain = document.getElementById('domainUrl').value.trim().replace(/\/$/, '');
+  if (!domain) { alert('Enter a domain first.'); return; }
+
+  const btn = document.getElementById('crawlBtn');
+  btn.disabled = true; btn.textContent = 'Discovering pages...';
+  document.getElementById('pageSelector').classList.add('hidden');
+
+  log('=== Discovering pages on ' + domain + ' ===', 'head');
+
+  try {
+    discoveredUrls = await fetchSitemapUrls(domain);
+
+    if (discoveredUrls.length === 0) {
+      // Sitemap not found — try crawling homepage links
+      log('No sitemap found — crawling homepage links...', 'info');
+      try {
+        const pageText = await fetchPageText(domain);
+        // Extract internal links from page text isn't perfect but gets main pages
+        // Since we stripped HTML, just offer the homepage
+        discoveredUrls = [domain + '/'];
+        log('Using homepage only — no sitemap found', 'info');
+      } catch(e) {
+        discoveredUrls = [domain + '/'];
+      }
+    }
+
+    log('Found ' + discoveredUrls.length + ' pages', 'ok');
+    renderPageSelector(discoveredUrls, domain);
+    document.getElementById('pageSelector').classList.remove('hidden');
+
+  } catch(e) {
+    log('Crawl error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '&#128269; Discover Pages';
+  }
+}
+
+function renderPageSelector(urls, domain) {
+  const list = document.getElementById('pageCheckboxList');
+  const count = document.getElementById('pageSelectorCount');
+  count.textContent = urls.length + ' pages found — select which to audit';
+
+  list.innerHTML = '';
+  urls.forEach((url, i) => {
+    const shortUrl = url.replace(domain, '') || '/';
+    // Auto-prioritize high-value page types
+    const isPriority = /pricing|compare|vs|alternative|how-to|guide|services|product/.test(url.toLowerCase());
+    const checked = i < 20 ? 'checked' : ''; // pre-select first 20
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid #1e1e3520;';
+    row.innerHTML = `
+      <input type="checkbox" id="pg_${i}" value="${url}" ${checked} onchange="updateCostEstimate()" style="accent-color:#7c6af7;cursor:pointer;" />
+      <label for="pg_${i}" style="font-size:11px;color:${isPriority ? '#7c6af7' : '#666'};cursor:pointer;flex:1;word-break:break-all;">${shortUrl}</label>
+      ${isPriority ? '<span style="font-size:9px;background:#7c6af733;color:#7c6af7;padding:1px 5px;border-radius:3px;flex-shrink:0;">HIGH VALUE</span>' : ''}
+    `;
+    list.appendChild(row);
+  });
+
+  updateCostEstimate();
+}
+
+function selectAllPages(checked) {
+  document.querySelectorAll('#pageCheckboxList input[type=checkbox]').forEach(cb => cb.checked = checked);
+  updateCostEstimate();
+}
+
+function updateCostEstimate() {
+  const selected = document.querySelectorAll('#pageCheckboxList input[type=checkbox]:checked').length;
+  const estimate = document.getElementById('selectedCostEstimate');
+  const cost = (selected * 0.01).toFixed(2);
+  const time = Math.ceil(selected * 2.5 / 60);
+  estimate.textContent = selected + ' pages selected · ~$' + cost + ' in API costs · ~' + time + ' min';
+}
+
+function getSelectedUrls() {
+  return Array.from(document.querySelectorAll('#pageCheckboxList input[type=checkbox]:checked')).map(cb => cb.value);
+}
+
+
 </script>
 </body>
 </html>
