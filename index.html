@@ -91,6 +91,15 @@ h1 { font-size: 22px; color: #7c6af7; letter-spacing: 3px; text-transform: upper
     <div class="field"><label>Domain URL</label><input type="text" id="domainUrl" placeholder="https://example.com" /></div>
     <button class="btn" id="crawlBtn" onclick="crawlDomain()" style="margin-bottom:16px;">&#128269; Discover Pages</button>
 
+    <!-- Manual URL fallback -->
+    <div style="margin-bottom:16px;">
+      <button onclick="toggleManualUrls()" style="background:transparent;border:none;color:#333;font-family:monospace;font-size:10px;cursor:pointer;padding:0;letter-spacing:1px;">▸ OR PASTE URLs MANUALLY (one per line)</button>
+      <div id="manualUrlPanel" class="hidden" style="margin-top:8px;">
+        <textarea id="manualUrlList" placeholder="https://almcorp.com/&#10;https://almcorp.com/services&#10;https://almcorp.com/about&#10;https://almcorp.com/contact" style="width:100%;height:120px;background:#080810;border:1px solid #1e1e35;border-radius:4px;padding:9px 12px;color:#e0e0e0;font-family:'Courier New',monospace;font-size:11px;outline:none;resize:vertical;"></textarea>
+        <button onclick="loadManualUrls()" style="margin-top:6px;background:#1e1e35;border:1px solid #7c6af7;color:#7c6af7;border-radius:4px;padding:6px 14px;font-family:monospace;font-size:11px;cursor:pointer;">Load These URLs</button>
+      </div>
+    </div>
+
     <!-- Page selector — shown after crawl -->
     <div id="pageSelector" class="hidden">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -928,8 +937,11 @@ function toggleWpPanel() {
 let discoveredUrls = [];
 
 async function crawlDomain() {
-  const domain = document.getElementById('domainUrl').value.trim().replace(/\/$/, '');
+  let domain = document.getElementById('domainUrl').value.trim().replace(/\/$/, '');
   if (!domain) { alert('Enter a domain first.'); return; }
+  // Auto-add https:// if missing
+  if (!domain.startsWith('http')) domain = 'https://' + domain;
+  document.getElementById('domainUrl').value = domain;
 
   const btn = document.getElementById('crawlBtn');
   btn.disabled = true; btn.textContent = 'Discovering pages...';
@@ -942,9 +954,37 @@ async function crawlDomain() {
     log('Checking sitemap...', 'info');
     discoveredUrls = await fetchSitemapUrls(domain);
 
-    // Step 2: If no sitemap, extract links directly from HTML
+    // Step 1b: Try robots.txt to find sitemap location
     if (discoveredUrls.length === 0) {
-      log('No sitemap found — extracting links from homepage HTML...', 'info');
+      log('Checking robots.txt for sitemap location...', 'info');
+      try {
+        const robotsProxy = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(domain + '/robots.txt');
+        const robotsRes = await fetch(robotsProxy, { signal: AbortSignal.timeout(6000) });
+        if (robotsRes.ok) {
+          const robotsTxt = await robotsRes.text();
+          const sitemapMatch = robotsTxt.match(/Sitemap:\s*(https?:\/\/[^\s]+)/i);
+          if (sitemapMatch) {
+            log('Found sitemap in robots.txt: ' + sitemapMatch[1], 'info');
+            const customSitemapRes = await fetch('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(sitemapMatch[1]), { signal: AbortSignal.timeout(8000) });
+            if (customSitemapRes.ok) {
+              const xml = await customSitemapRes.text();
+              const matches = xml.matchAll(/<loc>(.*?)<\/loc>/g);
+              for (const match of matches) {
+                const url = match[1].trim();
+                if (!url.endsWith('.xml') && !url.includes('/feed') && !url.includes('wp-content')) {
+                  discoveredUrls.push(url);
+                }
+              }
+              if (discoveredUrls.length > 0) log('Found ' + discoveredUrls.length + ' pages from robots.txt sitemap', 'ok');
+            }
+          }
+        }
+      } catch(e) { log('robots.txt check failed: ' + e.message.slice(0,50), 'info'); }
+    }
+
+    // Step 2: If still no sitemap, extract links directly from HTML
+    if (discoveredUrls.length === 0) {
+      log('Extracting links from homepage HTML...', 'info');
       discoveredUrls = await extractLinksFromPage(domain);
     }
 
@@ -967,9 +1007,11 @@ async function crawlDomain() {
 
 async function extractLinksFromPage(domain) {
   const proxies = [
+    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(domain),
     'https://corsproxy.io/?' + encodeURIComponent(domain),
     'https://api.allorigins.win/get?url=' + encodeURIComponent(domain),
-    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(domain)
+    'https://thingproxy.freeboard.io/fetch/' + domain,
+    'https://proxy.cors.sh/' + domain
   ];
 
   let rawHtml = null;
@@ -1094,6 +1136,35 @@ function getSelectedUrls() {
   return Array.from(document.querySelectorAll('#pageCheckboxList input[type=checkbox]:checked')).map(cb => cb.value);
 }
 
+
+
+function toggleManualUrls() {
+  const panel = document.getElementById('manualUrlPanel');
+  panel.classList.toggle('hidden');
+  const btn = panel.previousElementSibling;
+  btn.textContent = panel.classList.contains('hidden')
+    ? '▸ OR PASTE URLs MANUALLY (one per line)'
+    : '▾ OR PASTE URLs MANUALLY (one per line)';
+}
+
+function loadManualUrls() {
+  const domain = document.getElementById('domainUrl').value.trim().replace(/\/$/, '') || 'https://unknown';
+  const raw = document.getElementById('manualUrlList').value.trim();
+  if (!raw) { alert('Paste at least one URL.'); return; }
+
+  const urls = raw.split('\n')
+    .map(u => u.trim())
+    .filter(u => u.startsWith('http') && u.length > 8);
+
+  if (urls.length === 0) { alert('No valid URLs found. Each line should start with https://'); return; }
+
+  discoveredUrls = urls;
+  log('Loaded ' + urls.length + ' URLs manually', 'ok');
+  renderPageSelector(urls, domain);
+  document.getElementById('pageSelector').classList.remove('hidden');
+  // Close manual panel
+  document.getElementById('manualUrlPanel').classList.add('hidden');
+}
 
 </script>
 </body>
